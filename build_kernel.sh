@@ -317,8 +317,77 @@ CONFIG_FILE="$OUT_DIR/.config"
 ./scripts/config --file $CONFIG_FILE --disable CONFIG_LOCALVERSION_AUTO
 
 # 2. Config değişikliklerini doğrula ve bağımlılıkları bağla (ŞARTTIR)
+echo "====================================================="
+echo "📊 CONFIG KARŞILAŞTIRMA VE RAPORLAMA BAŞLIYOR..."
+echo "====================================================="
+
+# olddefconfig öncesi .config'in yedeğini al
+cp "$OUT_DIR/.config" "$OUT_DIR/.config.before_olddefconfig"
+
+# olddefconfig çalıştır
 echo "⚙️ Config bağımlılıkları doğrulanıyor (olddefconfig)..."
 make O="$OUT_DIR" $MAKE_OPTS olddefconfig
+
+# Karşılaştırma ve rapor oluşturma
+echo "📊 Config dosyaları karşılaştırılıyor..."
+BEFORE="$OUT_DIR/.config.before_olddefconfig"
+AFTER="$OUT_DIR/.config"
+REPORT="$KERNEL_DIR/config_report.txt"
+
+# Sadece CONFIG_ ile başlayan satırları al ve sırala
+grep "^CONFIG_" "$BEFORE" | sort > /tmp/config_before.txt
+grep "^CONFIG_" "$AFTER" | sort > /tmp/config_after.txt
+
+# İstatistikleri hesapla
+TOTAL_BEFORE=$(wc -l < /tmp/config_before.txt)
+ACCEPTED=$(comm -12 /tmp/config_before.txt /tmp/config_after.txt | wc -l)
+DELETED=$(comm -23 /tmp/config_before.txt /tmp/config_after.txt | wc -l)
+CHANGED=$(comm -13 /tmp/config_before.txt /tmp/config_after.txt | wc -l)
+
+# Rapor dosyasını oluştur
+echo "=====================================================" > "$REPORT"
+echo "📊 CONFIG ANALİZ RAPORU" >> "$REPORT"
+echo "=====================================================" >> "$REPORT"
+echo "📌 TOPLAM DEFCONFIG SATIRI  : $TOTAL_BEFORE" >> "$REPORT"
+echo "✅ KABUL EDİLEN (AYNEN ALINDI): $ACCEPTED" >> "$REPORT"
+echo "❌ SİLİNEN / ELENEN         : $DELETED" >> "$REPORT"
+echo "⚠️ DEĞİŞTİRİLEN (FARKLI DEĞER): $CHANGED" >> "$REPORT"
+echo "=====================================================" >> "$REPORT"
+echo "" >> "$REPORT"
+
+echo "📌 TOPLAM DEFCONFIG SATIRI  : $TOTAL_BEFORE"
+echo "✅ KABUL EDİLEN (AYNEN ALINDI): $ACCEPTED"
+echo "❌ SİLİNEN / ELENEN         : $DELETED"
+echo "⚠️ DEĞİŞTİRİLEN (FARKLI DEĞER): $CHANGED"
+echo ""
+
+# Silinen config'leri listele
+if [ $DELETED -gt 0 ]; then
+    echo "❌ SİLİNEN CONFIG'LER:" >> "$REPORT"
+    comm -23 /tmp/config_before.txt /tmp/config_after.txt >> "$REPORT"
+    echo "" >> "$REPORT"
+    
+    echo "❌ SİLİNEN CONFIG'LER:"
+    comm -23 /tmp/config_before.txt /tmp/config_after.txt
+    echo ""
+fi
+
+# Değiştirilen config'leri listele
+if [ $CHANGED -gt 0 ]; then
+    echo "⚠️ DEĞİŞTİRİLEN CONFIG'LER:" >> "$REPORT"
+    comm -13 /tmp/config_before.txt /tmp/config_after.txt >> "$REPORT"
+    echo "" >> "$REPORT"
+    
+    echo "⚠️ DEĞİŞTİRİLEN CONFIG'LER:"
+    comm -13 /tmp/config_before.txt /tmp/config_after.txt
+    echo ""
+fi
+
+echo "📄 Detaylı rapor 'config_report.txt' dosyasına yazıldı."
+echo "====================================================="
+
+# Geçici dosyaları temizle
+rm -f /tmp/config_before.txt /tmp/config_after.txt "$BEFORE"
 
 echo "✅ Özel config'ler başarıyla entegre edildi!"
 echo "====================================================="
