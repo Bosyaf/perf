@@ -4,7 +4,7 @@ set -e
 # Configuration
 DIR=$(readlink -f .)
 MAIN=$(readlink -f ${DIR}/..)
-KERNEL_DEFCONFIG=houji_gki_defconfig
+KERNEL_DEFCONFIG=shen_gki_defconfig
 CLANG_DIR="$MAIN/toolchains/clang-1"
 KERNEL_DIR=$(pwd)
 OUT_DIR="$KERNEL_DIR/out"
@@ -240,159 +240,8 @@ YYLL2="$KERNEL_DIR/scripts/dtc/dtc-lexer.l"
 echo "**** Building with $KBUILD_COMPILER_STRING ****"
 echo "**** Defconfig: $KERNEL_DEFCONFIG ****"
 
-# 1. Defconfig oluşturuluyor (Ana .config dosyası OUT_DIR içerisinde yaratılır)
+# Build kernel
 make O="$OUT_DIR" $KERNEL_DEFCONFIG $MAKE_OPTS || exit 1
-
-echo "====================================================="
-echo "⚙️ ÖZEL CONFIG'LER KERNEL'E ENTEGRE EDİLİYOR..."
-echo "====================================================="
-
-CONFIG_FILE="$OUT_DIR/.config"
-
-# 1. CMDLINE
-./scripts/config --file $CONFIG_FILE --set-str CONFIG_CMDLINE "console=ttynull stack_depot_disable=on kvm-arm.mode=protected bootconfig noirqdebug nosoftlockup nmi_watchdog=0 quiet kasan.page_alloc.sample=0 kasan.stacktrace=off kasan=off slub_debug=- page_owner=off"
-./scripts/config --file $CONFIG_FILE --enable CONFIG_CMDLINE_EXTEND
-
-# 2. ZAMANLAYICI & GÜÇ (HZ 300, BORE, THERMAL)
-./scripts/config --file $CONFIG_FILE --module CONFIG_SCHED_WALT
-./scripts/config --file $CONFIG_FILE --disable CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
-./scripts/config --file $CONFIG_FILE --disable CONFIG_SCHED_CLUSTER
-./scripts/config --file $CONFIG_FILE --disable CONFIG_SCHED_SMT
-./scripts/config --file $CONFIG_FILE --disable CONFIG_HZ_100
-./scripts/config --file $CONFIG_FILE --disable CONFIG_HZ_250
-./scripts/config --file $CONFIG_FILE --enable CONFIG_HZ_300
-./scripts/config --file $CONFIG_FILE --disable CONFIG_HZ_500
-./scripts/config --file $CONFIG_FILE --disable CONFIG_HZ_1000
-./scripts/config --file $CONFIG_FILE --set-val CONFIG_HZ 300
-./scripts/config --file $CONFIG_FILE --enable CONFIG_NO_HZ_IDLE
-./scripts/config --file $CONFIG_FILE --disable CONFIG_NO_HZ_FULL
-./scripts/config --file $CONFIG_FILE --enable CONFIG_THERMAL_GOV_STEP_WISE
-./scripts/config --file $CONFIG_FILE --enable CONFIG_THERMAL_GOV_POWER_ALLOCATOR
-./scripts/config --file $CONFIG_FILE --disable CONFIG_THERMAL_DEFAULT_GOV_STEP_WISE
-./scripts/config --file $CONFIG_FILE --enable CONFIG_THERMAL_DEFAULT_GOV_POWER_ALLOCATOR
-
-# 3. PERFORMANS: PREEMPTION & THIN LTO 
-./scripts/config --file $CONFIG_FILE --enable CONFIG_LTO_CLANG
-./scripts/config --file $CONFIG_FILE --enable CONFIG_LTO_CLANG_THIN
-./scripts/config --file $CONFIG_FILE --disable CONFIG_LTO_CLANG_FULL
-./scripts/config --file $CONFIG_FILE --disable CONFIG_PREEMPT_NONE
-./scripts/config --file $CONFIG_FILE --disable CONFIG_PREEMPT_VOLUNTARY
-./scripts/config --file $CONFIG_FILE --enable CONFIG_PREEMPT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_PREEMPT_COUNT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_PREEMPTION
-./scripts/config --file $CONFIG_FILE --enable CONFIG_PREEMPT_BUILD
-
-# 4. GİZLİLİK, AĞ & DEBUG KAPATMA
-./scripts/config --file $CONFIG_FILE --enable CONFIG_WIREGUARD
-./scripts/config --file $CONFIG_FILE --enable CONFIG_IP_NF_TARGET_TTL
-./scripts/config --file $CONFIG_FILE --enable CONFIG_IP6_NF_TARGET_HL
-./scripts/config --file $CONFIG_FILE --enable CONFIG_IP6_NF_MATCH_HL
-./scripts/config --file $CONFIG_FILE --enable CONFIG_TMPFS_POSIX_ACL
-./scripts/config --file $CONFIG_FILE --enable CONFIG_TMPFS_XATTR
-./scripts/config --file $CONFIG_FILE --disable CONFIG_NUMA_BALANCING
-./scripts/config --file $CONFIG_FILE --disable CONFIG_DEBUG_INFO_REDUCED
-./scripts/config --file $CONFIG_FILE --disable CONFIG_DEBUG_INFO_COMPRESSED
-./scripts/config --file $CONFIG_FILE --disable CONFIG_DEBUG_INFO_DWARF5
-
-# 5. KERNELSU & SUSFS MODÜLLERİ
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_SUS_PATH
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_SUS_MOUNT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_SUS_KSTAT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_TRY_UMOUNT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_SPOOF_UNAME
-./scripts/config --file $CONFIG_FILE --disable CONFIG_KSU_SUSFS_ENABLE_LOG
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_OPEN_REDIRECT
-./scripts/config --file $CONFIG_FILE --enable CONFIG_KSU_SUSFS_SUS_MAP
-
-# Localversion
-./scripts/config --file $CONFIG_FILE --set-str CONFIG_LOCALVERSION "-Voronwe"
-./scripts/config --file $CONFIG_FILE --disable CONFIG_LOCALVERSION_AUTO
-
-# 2. Config değişikliklerini doğrula ve bağımlılıkları bağla (ŞARTTIR)
-echo "====================================================="
-echo "📊 CONFIG KARŞILAŞTIRMA VE RAPORLAMA BAŞLIYOR..."
-echo "====================================================="
-
-# olddefconfig öncesi .config'in yedeğini al
-cp "$OUT_DIR/.config" "$OUT_DIR/.config.before_olddefconfig"
-
-# olddefconfig çalıştır
-echo "⚙️ Config bağımlılıkları doğrulanıyor (olddefconfig)..."
-make O="$OUT_DIR" $MAKE_OPTS olddefconfig
-
-# Karşılaştırma ve rapor oluşturma
-echo "📊 Config dosyaları karşılaştırılıyor..."
-BEFORE="$OUT_DIR/.config.before_olddefconfig"
-AFTER="$OUT_DIR/.config"
-REPORT="$KERNEL_DIR/config_report.txt"
-
-# Sadece CONFIG_ ile başlayan satırları al ve sırala
-grep "^CONFIG_" "$BEFORE" | sort > /tmp/config_before.txt
-grep "^CONFIG_" "$AFTER" | sort > /tmp/config_after.txt
-
-# İstatistikleri hesapla
-TOTAL_BEFORE=$(wc -l < /tmp/config_before.txt)
-ACCEPTED=$(comm -12 /tmp/config_before.txt /tmp/config_after.txt | wc -l)
-DELETED=$(comm -23 /tmp/config_before.txt /tmp/config_after.txt | wc -l)
-CHANGED=$(comm -13 /tmp/config_before.txt /tmp/config_after.txt | wc -l)
-
-# Rapor dosyasını oluştur
-echo "=====================================================" > "$REPORT"
-echo "📊 CONFIG ANALİZ RAPORU" >> "$REPORT"
-echo "=====================================================" >> "$REPORT"
-echo "📌 TOPLAM DEFCONFIG SATIRI  : $TOTAL_BEFORE" >> "$REPORT"
-echo "✅ KABUL EDİLEN (AYNEN ALINDI): $ACCEPTED" >> "$REPORT"
-echo "❌ SİLİNEN / ELENEN         : $DELETED" >> "$REPORT"
-echo "⚠️ DEĞİŞTİRİLEN (FARKLI DEĞER): $CHANGED" >> "$REPORT"
-echo "=====================================================" >> "$REPORT"
-echo "" >> "$REPORT"
-
-echo "📌 TOPLAM DEFCONFIG SATIRI  : $TOTAL_BEFORE"
-echo "✅ KABUL EDİLEN (AYNEN ALINDI): $ACCEPTED"
-echo "❌ SİLİNEN / ELENEN         : $DELETED"
-echo "⚠️ DEĞİŞTİRİLEN (FARKLI DEĞER): $CHANGED"
-echo ""
-
-# Silinen config'leri listele
-if [ $DELETED -gt 0 ]; then
-    echo "❌ SİLİNEN CONFIG'LER:" >> "$REPORT"
-    comm -23 /tmp/config_before.txt /tmp/config_after.txt >> "$REPORT"
-    echo "" >> "$REPORT"
-    
-    echo "❌ SİLİNEN CONFIG'LER:"
-    comm -23 /tmp/config_before.txt /tmp/config_after.txt
-    echo ""
-fi
-
-# Değiştirilen config'leri listele
-if [ $CHANGED -gt 0 ]; then
-    echo "⚠️ DEĞİŞTİRİLEN CONFIG'LER:" >> "$REPORT"
-    comm -13 /tmp/config_before.txt /tmp/config_after.txt >> "$REPORT"
-    echo "" >> "$REPORT"
-    
-    echo "⚠️ DEĞİŞTİRİLEN CONFIG'LER:"
-    comm -13 /tmp/config_before.txt /tmp/config_after.txt
-    echo ""
-fi
-
-echo "📄 Detaylı rapor 'config_report.txt' dosyasına yazıldı."
-echo "====================================================="
-
-# Geçici dosyaları temizle
-rm -f /tmp/config_before.txt /tmp/config_after.txt "$BEFORE"
-
-echo "✅ Özel config'ler başarıyla entegre edildi!"
-echo "====================================================="
-
-# 3. Asıl Kernel Derlemesi Başlıyor
 make -j$(nproc --all) O="$OUT_DIR" $MAKE_OPTS || exit 1
 
 # Build DTB/DTBO if they exist
