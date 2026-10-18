@@ -110,44 +110,59 @@ check_clang() {
     return 1
 }
 
+
 # Install ZyC Clang 22.0.0git
 CLANG_DIR="$MAIN/toolchains/zyc-clang-22"
 CLANG_URL="https://github.com/ZyCromerZ/Clang/releases/download/22.0.0git-20250928-release/Clang-22.0.0git-20250928.tar.gz"
 ARCHIVE_NAME="zyc-clang-22.tar.gz"
 
+# Check ZyC Clang installation
 check_clang() {
     [ -x "$CLANG_DIR/bin/clang" ] &&
     [ -x "$CLANG_DIR/bin/clang++" ] &&
     [ -x "$CLANG_DIR/bin/ld.lld" ] &&
     [ -x "$CLANG_DIR/bin/llvm-ar" ] &&
     [ -x "$CLANG_DIR/bin/llvm-nm" ] &&
-    [ -x "$CLANG_DIR/bin/llvm-strip" ]
+    [ -x "$CLANG_DIR/bin/llvm-strip" ] &&
+    [ -x "$CLANG_DIR/bin/llvm-objcopy" ] &&
+    [ -x "$CLANG_DIR/bin/llvm-objdump" ]
 }
 
+# Download and install ZyC Clang if needed
 if ! check_clang; then
     echo "ZyC Clang 22.0.0 indiriliyor..."
     mkdir -p "$CLANG_DIR"
 
-    wget -O "$MAIN/$ARCHIVE_NAME" "$CLANG_URL"
-    
-    # ZyC tar.gz kullandığı için -xzf ile çıkarıyoruz.
-    tar -xzf "$MAIN/$ARCHIVE_NAME" -C "$CLANG_DIR"
+    wget -O "$MAIN/$ARCHIVE_NAME" "$CLANG_URL" || {
+        echo "HATA: ZyC Clang indirilemedi."
+        exit 1
+    }
+
+    tar -xzf "$MAIN/$ARCHIVE_NAME" -C "$CLANG_DIR" || {
+        echo "HATA: ZyC Clang arsivi acilamadi."
+        rm -f "$MAIN/$ARCHIVE_NAME"
+        exit 1
+    }
+
     rm -f "$MAIN/$ARCHIVE_NAME"
 fi
 
+# Verify ZyC Clang installation
 if ! check_clang; then
-    echo "HATA: ZyC Clang 22 kurulumu tamamlanamadi."
+    echo "HATA: ZyC Clang kurulumu tamamlanamadi."
     ls -lah "$CLANG_DIR"
     ls -lah "$CLANG_DIR/bin" || true
     exit 1
 fi
 
-# Use the same LLVM toolchain for compiler and linker
+# Use ZyC Clang for kernel and host compilation
 export PATH="$CLANG_DIR/bin:$PATH"
+
 export CC="$CLANG_DIR/bin/clang"
 export CXX="$CLANG_DIR/bin/clang++"
 export HOSTCC="$CLANG_DIR/bin/clang"
 export HOSTCXX="$CLANG_DIR/bin/clang++"
+
 export LD="$CLANG_DIR/bin/ld.lld"
 export HOSTLD="$CLANG_DIR/bin/ld.lld"
 export AR="$CLANG_DIR/bin/llvm-ar"
@@ -156,12 +171,14 @@ export NM="$CLANG_DIR/bin/llvm-nm"
 export STRIP="$CLANG_DIR/bin/llvm-strip"
 export OBJCOPY="$CLANG_DIR/bin/llvm-objcopy"
 export OBJDUMP="$CLANG_DIR/bin/llvm-objdump"
+
 export LLVM=1
 export LLVM_IAS=1
 
 export KBUILD_COMPILER_STRING="$("$CC" --version | head -n 1)"
 echo "Kullanilan Clang: $KBUILD_COMPILER_STRING"
 echo "Kullanilan LLD: $("$LD" --version | head -n 1)"
+echo "Kullanilan LLVM AR: $("$AR" --version | head -n 1)"
 
 # Set up target
 export ARCH=arm64
@@ -170,64 +187,66 @@ export CROSS_COMPILE=aarch64-linux-gnu-
 
 # Include paths
 export KERNEL_SRC="$KERNEL_DIR"
+
 INCLUDE_PATHS="
-    -I$KERNEL_DIR/include
-    -I$KERNEL_DIR/arch/arm64/include
-    -I$KERNEL_DIR/drivers/base/regmap
-    -I$AUDIO_ROOT/include
-    -I$CAMERA_ROOT/include
-    -I$DISPLAY_ROOT/include
+-I$KERNEL_DIR/include
+-I$KERNEL_DIR/arch/arm64/include
+-I$KERNEL_DIR/drivers/base/regmap
+-I$AUDIO_ROOT/include
+-I$CAMERA_ROOT/include
+-I$DISPLAY_ROOT/include
 "
 
 # Build flags
 export KCFLAGS="-O2 \
-    -march=armv9.2-a+crypto+crc+dotprod+rcpc+lse+sha3 \
-    -falign-functions=32 \
-    -fomit-frame-pointer \
-    -ffunction-sections \
-    -fdata-sections \
-    -fstack-protector \
-    -fno-unwind-tables \
-    -fno-asynchronous-unwind-tables \
-    -fno-math-errno \
-    -fno-semantic-interposition \
-    -Wno-frame-larger-than \
-    -Wno-unused-command-line-argument \
-    -Wno-error \
-    -Wno-format \
-    -Wno-format-extra-args \
-    -Wno-constant-logical-operand \
-    -Wno-unused-variable \
-    -Wno-address-of-packed-member \
-    -Wno-uninitialized-const-pointer \
-    -Wno-uninitialized \
-    -Wno-default-const-init-var-unsafe \
-    -Wno-default-const-init-field-unsafe"
+-march=armv9.2-a+crypto+crc+dotprod+rcpc+lse+sha3 \
+-falign-functions=32 \
+-fomit-frame-pointer \
+-ffunction-sections \
+-fdata-sections \
+-fstack-protector \
+-fno-unwind-tables \
+-fno-asynchronous-unwind-tables \
+-fno-math-errno \
+-fno-semantic-interposition \
+-Wno-frame-larger-than \
+-Wno-unused-command-line-argument \
+-Wno-error \
+-Wno-format \
+-Wno-format-extra-args \
+-Wno-constant-logical-operand \
+-Wno-unused-variable \
+-Wno-address-of-packed-member \
+-Wno-uninitialized-const-pointer \
+-Wno-uninitialized \
+-Wno-default-const-init-var-unsafe \
+-Wno-default-const-init-field-unsafe"
 
 export KLDFLAGS="-Wl,--gc-sections \
-    -Wl,--as-needed \
-    -Wl,--strip-debug \
-    -Wl,--icf=safe \
-    -Wl,--no-warnings \
-    -Wl,-O2"
+-Wl,--as-needed \
+-Wl,--strip-debug \
+-Wl,--icf=safe \
+-Wl,--no-warnings \
+-Wl,-O2"
 
+# Make options: use ZyC Clang toolchain paths explicitly
 MAKE_OPTS="
-    CC=clang
-    STRIP=llvm-strip
-    LD=ld.lld
-    AR=llvm-ar
-    NM=llvm-nm
-    OBJCOPY=llvm-objcopy
-    OBJDUMP=llvm-objdump
-    HOSTCC=clang
-    HOSTCXX=clang++
-    HOSTAR=llvm-ar
-    HOSTLD=ld.lld
-    LLVM=1
-    LLVM_IAS=1
-    LTO=thin
-    $INCLUDE_PATHS
+CC=$CLANG_DIR/bin/clang
+LD=$CLANG_DIR/bin/ld.lld
+AR=$CLANG_DIR/bin/llvm-ar
+NM=$CLANG_DIR/bin/llvm-nm
+STRIP=$CLANG_DIR/bin/llvm-strip
+OBJCOPY=$CLANG_DIR/bin/llvm-objcopy
+OBJDUMP=$CLANG_DIR/bin/llvm-objdump
+HOSTCC=$CLANG_DIR/bin/clang
+HOSTCXX=$CLANG_DIR/bin/clang++
+HOSTLD=$CLANG_DIR/bin/ld.lld
+HOSTAR=$CLANG_DIR/bin/llvm-ar
+LLVM=1
+LLVM_IAS=1
+$INCLUDE_PATHS
 "
+
 
 # Apply YYLLOC workaround
 echo "Applying YYLLOC workaround..."
